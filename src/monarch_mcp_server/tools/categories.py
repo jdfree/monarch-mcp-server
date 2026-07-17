@@ -3,7 +3,7 @@
 import logging
 from typing import Any, Dict, Optional
 
-from monarch_mcp_server.app import mcp
+from monarch_mcp_server.app import mcp, mutating_tool
 from monarch_mcp_server.client import get_monarch_client
 from monarch_mcp_server.helpers import json_success, json_error
 
@@ -48,7 +48,7 @@ async def get_transaction_category_groups() -> str:
         return json_error("get_transaction_category_groups", e)
 
 
-@mcp.tool()
+@mutating_tool()
 async def create_transaction_category(
     group_id: str,
     transaction_category_name: str,

@@ -8,6 +8,8 @@ My MonarchMoney referral: https://www.monarchmoney.com/referral/ufmn0r83yf?r_sou
 
 **Built with the [MonarchMoneyCommunity Python library](https://github.com/bradleyseanf/monarchmoneycommunity)** - An actively maintained community fork of the Monarch Money API with full MFA support.
 
+> 🔒 **This fork ships in read-only mode by default.** Every tool that would write to your Monarch account (create/update/delete transactions, budgets, tags, categories, rules, splits, balance uploads, and account refreshes) is *not registered* unless you explicitly opt in by setting `MONARCH_READ_ONLY=false`. See [Read-Only Mode](#-read-only-mode) for details and how to toggle it.
+
 <a href="https://glama.ai/mcp/servers/@robcerda/monarch-mcp-server">
   <img width="380" height="200" src="https://glama.ai/mcp/servers/@robcerda/monarch-mcp-server/badge" alt="monarch-mcp-server MCP server" />
 </a>
@@ -430,9 +432,70 @@ monarch-mcp-server/
 - Session files are encrypted
 - Authentication handled in secure terminal environment
 
+## 🔒 Read-Only Mode
+
+This server runs in **read-only mode by default**. In read-only mode the write
+tools are never registered with the MCP client — they do not appear in the tool
+list and cannot be called, so the model has no way to modify your Monarch data
+even if it is prompted (or prompt-injected via a transaction memo) to do so.
+This is enforcement by *absence*, not just a runtime check.
+
+### Toggling the flag
+
+Read-only mode is controlled by the `MONARCH_READ_ONLY` environment variable,
+read once at server startup:
+
+| `MONARCH_READ_ONLY` value | Mode | Write tools |
+|---|---|---|
+| *unset* (default) | read-only | hidden |
+| `true`, `1`, `yes`, `on`, empty, or any other value | read-only | hidden |
+| `false`, `0`, `no`, or `off` | read-write | registered |
+
+Only an explicit falsey word (`false`/`0`/`no`/`off`) enables writes. Anything
+else — including an empty `MONARCH_READ_ONLY=` — stays read-only, so a stray or
+misspelled value can never silently unlock writes.
+
+**To enable write access**, add the variable to your MCP server config's
+environment. For Claude Desktop / Claude Code (`claude_desktop_config.json` or
+`~/.claude.json`):
+
+```json
+{
+  "mcpServers": {
+    "Monarch Money": {
+      "command": "/opt/homebrew/bin/uv",
+      "args": ["run", "--with", "mcp[cli]", "--with-editable",
+               "/path/to/your/monarch-mcp-server", "mcp", "run",
+               "/path/to/your/monarch-mcp-server/src/monarch_mcp_server/server.py"],
+      "env": { "MONARCH_READ_ONLY": "false" }
+    }
+  }
+}
+```
+
+Restart the client after changing the value. On startup the server logs the
+active mode: `Monarch MCP read-only mode is ON/OFF`.
+
+### What counts as a write
+
+The following 18 tools are hidden in read-only mode. Note that `refresh_accounts`
+is treated as a write because it triggers a server-side sync, not a pure read:
+
+`create_transaction`, `update_transaction`, `categorize_transaction`,
+`update_transaction_notes`, `mark_transaction_reviewed`,
+`bulk_categorize_transactions`, `delete_transaction`, `set_budget_amount`,
+`create_transaction_category`, `set_transaction_tags`, `create_transaction_tag`,
+`add_transaction_tag`, `create_transaction_rule`, `update_transaction_rule`,
+`delete_transaction_rule`, `split_transaction`, `upload_account_balance_history`,
+`refresh_accounts`.
+
+All authentication tools (`monarch_login`, `check_auth_status`, etc.) stay
+available in read-only mode so you can still sign in.
+
 ### Recommended: require approval for mutating tools
 
-Several tools mutate your Monarch ledger (`create_transaction`, `update_transaction`, `delete_transaction`, `bulk_categorize_transactions`, `upload_account_balance_history`, `set_transaction_tags`, `create_transaction_rule`, `update_transaction_rule`, `delete_transaction_rule`, `split_transaction`, `set_budget_amount`).
+If you *do* enable write access (`MONARCH_READ_ONLY=false`), several tools then
+mutate your Monarch ledger (`create_transaction`, `update_transaction`, `delete_transaction`, `bulk_categorize_transactions`, `upload_account_balance_history`, `set_transaction_tags`, `create_transaction_rule`, `update_transaction_rule`, `delete_transaction_rule`, `split_transaction`, `set_budget_amount`).
 
 Because the LLM can be influenced by data it reads back (a malicious-looking memo or merchant name in a transaction), the safest setup is to configure your MCP client to require manual approval before any mutating tool runs. In Claude Desktop and Claude Code this is the default behavior for unknown tools; keep it that way for the tools listed above rather than allow-listing them.
 
